@@ -1,11 +1,10 @@
 "use client";
 
 import BeerList from "@/components/BeerList";
-import ExtractedBeerEditor from "@/components/ExtractedBeerEditor";
 import MenuPhotoUpload from "@/components/MenuPhotoUpload";
 import { useBeerSearch } from "@/hooks/useBeerSearch";
 import { useOcr } from "@/hooks/useOcr";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type ViewState = "input" | "results";
 
@@ -14,29 +13,36 @@ export default function Home() {
 
   const beerSearch = useBeerSearch();
   const ocr = useOcr();
+  const hasStartedLookup = useRef(false);
 
   const handlePhotoSelected = (file: File) => {
+    hasStartedLookup.current = false;
     ocr.processImage(file);
   };
 
   const handleUrlSubmitted = (url: string) => {
+    hasStartedLookup.current = false;
     ocr.processUrl(url);
   };
 
-  const handleConfirmBeers = (names: string[]) => {
-    setViewState("results");
-    beerSearch.searchBatch(names);
-  };
+  // Auto-lookup as soon as beers are extracted
+  useEffect(() => {
+    if (
+      ocr.status === "complete" &&
+      ocr.extractedNames.length > 0 &&
+      !hasStartedLookup.current
+    ) {
+      hasStartedLookup.current = true;
+      setViewState("results");
+      beerSearch.searchBatch(ocr.extractedNames);
+    }
+  }, [ocr.status, ocr.extractedNames, beerSearch]);
 
   const handleBack = () => {
     setViewState("input");
+    hasStartedLookup.current = false;
     ocr.reset();
   };
-
-  const showEditor =
-    ocr.status === "complete" &&
-    ocr.extractedNames.length > 0 &&
-    viewState !== "results";
 
   return (
     <main className="min-h-screen bg-zinc-950 text-white">
@@ -94,14 +100,6 @@ export default function Home() {
           <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4 text-red-400 text-sm">
             {ocr.error}
           </div>
-        )}
-
-        {showEditor && (
-          <ExtractedBeerEditor
-            beerNames={ocr.extractedNames}
-            onConfirm={handleConfirmBeers}
-            onCancel={handleBack}
-          />
         )}
 
         {ocr.status === "complete" &&
