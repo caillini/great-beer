@@ -1,65 +1,157 @@
-import Image from "next/image";
+"use client";
+
+import BeerList from "@/components/BeerList";
+import ExtractedBeerEditor from "@/components/ExtractedBeerEditor";
+import MenuPhotoUpload from "@/components/MenuPhotoUpload";
+import { useBeerSearch } from "@/hooks/useBeerSearch";
+import { useOcr } from "@/hooks/useOcr";
+import { useState } from "react";
+
+type ViewState = "input" | "results";
 
 export default function Home() {
+  const [viewState, setViewState] = useState<ViewState>("input");
+
+  const beerSearch = useBeerSearch();
+  const ocr = useOcr();
+
+  const handlePhotoSelected = (file: File) => {
+    ocr.processImage(file);
+  };
+
+  const handleUrlSubmitted = (url: string) => {
+    ocr.processUrl(url);
+  };
+
+  const handleConfirmBeers = (names: string[]) => {
+    setViewState("results");
+    beerSearch.searchBatch(names);
+  };
+
+  const handleBack = () => {
+    setViewState("input");
+    ocr.reset();
+  };
+
+  const showEditor =
+    ocr.status === "complete" &&
+    ocr.extractedNames.length > 0 &&
+    viewState !== "results";
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <main className="min-h-screen bg-zinc-950 text-white">
+      {/* Header */}
+      <div className="bg-gradient-to-b from-amber-950/30 to-zinc-950 border-b border-zinc-800/50">
+        <div className="max-w-lg mx-auto px-4 pt-8 pb-6">
+          <div className="text-center">
+            <h1 className="text-3xl font-bold">
+              <span className="text-amber-400">Great</span>{" "}
+              <span className="text-white">Beer</span>
+            </h1>
+            <p className="text-zinc-400 text-sm mt-1">
+              Scan a menu to find the best beers, rated by the community
+            </p>
+          </div>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+      </div>
+
+      {/* Content */}
+      <div className="max-w-lg mx-auto px-4 py-6 space-y-4">
+        {viewState === "results" && (
+          <button
+            onClick={handleBack}
+            className="flex items-center gap-2 text-zinc-400 hover:text-white transition-colors text-sm"
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M15 19l-7-7 7-7"
+              />
+            </svg>
+            Scan another menu
+          </button>
+        )}
+
+        {/* Menu input */}
+        {viewState === "input" && (
+          <MenuPhotoUpload
+            onImageSelected={handlePhotoSelected}
+            onUrlSubmitted={handleUrlSubmitted}
+            processing={ocr.status === "processing"}
+            progress={ocr.progress}
+            statusText={ocr.statusText}
+          />
+        )}
+
+        {ocr.error && (
+          <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4 text-red-400 text-sm">
+            {ocr.error}
+          </div>
+        )}
+
+        {showEditor && (
+          <ExtractedBeerEditor
+            beerNames={ocr.extractedNames}
+            onConfirm={handleConfirmBeers}
+            onCancel={handleBack}
+          />
+        )}
+
+        {ocr.status === "complete" &&
+          ocr.extractedNames.length === 0 && (
+            <div className="text-center py-8 text-zinc-400">
+              <p className="text-lg mb-2">No beers detected</p>
+              <p className="text-sm">
+                Try a clearer photo or check that the URL links directly to a
+                menu image.
+              </p>
+            </div>
+          )}
+
+        {/* Beer Results */}
+        {viewState === "results" && (
+          <>
+            {beerSearch.loading && (
+              <div className="bg-zinc-800/50 border border-zinc-700/50 rounded-xl p-4">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-zinc-400">Looking up ratings...</span>
+                  <span className="text-amber-400 font-medium">
+                    {beerSearch.progress.done} / {beerSearch.progress.total}
+                  </span>
+                </div>
+                <div className="w-full bg-zinc-700 rounded-full h-1.5 mt-2">
+                  <div
+                    className="bg-amber-500 h-1.5 rounded-full transition-all duration-300"
+                    style={{
+                      width: `${beerSearch.progress.total > 0 ? (beerSearch.progress.done / beerSearch.progress.total) * 100 : 0}%`,
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+            <BeerList
+              beers={beerSearch.beers}
+              emptyMessage={
+                beerSearch.loading
+                  ? "Searching for beers..."
+                  : "No matching beers found on Untappd."
+              }
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+            {beerSearch.error && (
+              <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4 text-red-400 text-sm">
+                {beerSearch.error}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </main>
   );
 }
