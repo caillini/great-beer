@@ -1,7 +1,7 @@
 {
-  "name": "Great Beer",
-  "short_name": "Great Beer",
-  "description": "Find the best beers on tap, rated by the community",
+  "name": "Drink Good Beer",
+  "short_name": "Drink Good Beer",
+  "description": "Life is too short to drink bad beer",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#09090b",

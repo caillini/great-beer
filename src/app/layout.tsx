@@ -13,14 +13,18 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Great Beer - Find the Best Beers on Tap",
+  title: "Drink Good Beer - Life Is Too Short",
   description:
-    "Search bars and restaurants to find the highest rated beers on tap. Scan beer menus to get Untappd ratings instantly.",
+    "Scan beer menus to instantly find the highest rated beers. Life is too short to drink bad beer.",
   manifest: "/manifest.json",
+  icons: {
+    icon: "/icon-512.png",
+    apple: "/apple-touch-icon.png",
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "Great Beer",
+    title: "Drink Good Beer",
   },
 };
 

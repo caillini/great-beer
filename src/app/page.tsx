@@ -51,11 +51,11 @@ export default function Home() {
         <div className="max-w-lg mx-auto px-4 pt-8 pb-6">
           <div className="text-center">
             <h1 className="text-3xl font-bold">
-              <span className="text-amber-400">Great</span>{" "}
-              <span className="text-white">Beer</span>
+              <span className="text-amber-400">Drink</span>{" "}
+              <span className="text-white">Good Beer</span>
             </h1>
-            <p className="text-zinc-400 text-sm mt-1">
-              Scan a menu to find the best beers, rated by the community
+            <p className="text-zinc-400 text-sm mt-1 italic">
+              Life is too short
             </p>
           </div>
         </div>
