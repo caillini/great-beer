@@ -206,13 +206,13 @@ export async function findBeerAtBrewery(
 /**
  * Search Untappd for a beer.
  * @param query - search query string
- * @param preferredBrewery - if set, ONLY return results from this brewery (strict mode)
+ * @param preferredBrewery - if set, prefer results from this brewery but accept others as fallback
  */
 export async function searchBeer(
   query: string,
   preferredBrewery?: string
 ): Promise<Beer | null> {
-  const cacheKey = `beer-search-v2:${query.toLowerCase()}:${(preferredBrewery || "").toLowerCase()}`;
+  const cacheKey = `beer-search-v3:${query.toLowerCase()}:${(preferredBrewery || "").toLowerCase()}`;
   const cached = getCached<Beer | null>(cacheKey);
   if (cached !== null) return cached;
 
@@ -253,6 +253,11 @@ function breweryMatches(resultBrewery: string, targetBrewery: string): boolean {
   return a.includes(b) || b.includes(a);
 }
 
+/**
+ * Find the best match from search results.
+ * When preferredBrewery is set: prefer results from that brewery, but fall
+ * back to best name match if nothing from that brewery appears.
+ */
 function findBestMatch(
   query: string,
   beers: Beer[],
@@ -260,7 +265,7 @@ function findBestMatch(
 ): Beer | null {
   if (beers.length === 0) return null;
 
-  // If we have a preferred brewery, ONLY return results from that brewery
+  // If we have a preferred brewery, try brewery-matched results first
   if (preferredBrewery) {
     const breweryMatched = beers.filter((b) =>
       breweryMatches(b.brewery, preferredBrewery)
@@ -271,14 +276,12 @@ function findBestMatch(
       );
       return findBestNameMatch(query, breweryMatched);
     }
-    // No results from this brewery — return null, don't return wrong brewery
     console.log(
-      `[match] No results matching brewery "${preferredBrewery}" — skipping`
+      `[match] No results matching brewery "${preferredBrewery}" — falling back to best name match`
     );
-    return null;
   }
 
-  // No brewery preference — pick best name match from all results
+  // No brewery match (or no preference) — pick best name match from all results
   return findBestNameMatch(query, beers);
 }
 
@@ -286,20 +289,67 @@ function findBestNameMatch(query: string, beers: Beer[]): Beer | null {
   if (beers.length === 0) return null;
 
   const q = query.toLowerCase().trim();
+  // Extract individual words for scoring (skip very short words)
+  const queryWords = q.split(/\s+/).filter((w) => w.length > 1);
 
-  // Try exact name match first
-  const exact = beers.find((b) => b.name.toLowerCase() === q);
-  if (exact) return exact;
+  // Score each beer by how well it matches the query
+  const scored = beers.map((beer) => {
+    const name = beer.name.toLowerCase();
+    let score = 0;
 
-  // Try name contains query
-  const contains = beers.find((b) => b.name.toLowerCase().includes(q));
-  if (contains) return contains;
+    // Exact match -- best possible
+    if (name === q) return { beer, score: 1000 };
 
-  // Try query contains beer name
-  const reverse = beers.find((b) => q.includes(b.name.toLowerCase()));
-  if (reverse) return reverse;
+    const nameWords = name.split(/\s+/).filter((w) => w.length > 1);
 
-  // Return first result as best guess
+    // Name contains full query
+    if (name.includes(q)) score += 100;
+
+    // Query contains full beer name
+    if (q.includes(name)) score += 80;
+
+    // Count word overlaps (query words found in name)
+    const matchingWords = queryWords.filter((w) => name.includes(w));
+    score += matchingWords.length * 20;
+
+    // Bonus for word-level overlap ratio (name words found in query)
+    if (nameWords.length > 0) {
+      const reverseMatching = nameWords.filter((w) => q.includes(w));
+      score += (reverseMatching.length / nameWords.length) * 30;
+    }
+
+    // Penalize results with extra words not in the query
+    // "Szechuan Point Bonita" has "szechuan" which is not in query -> penalty
+    // "Pt. Bonita Pilsner" is shorter and more relevant -> less penalty
+    if (nameWords.length > 0) {
+      const extraWords = nameWords.filter((w) => !q.includes(w));
+      score -= extraWords.length * 15;
+    }
+
+    // Prefer shorter names (closer to query length = more precise match)
+    const lengthRatio = Math.abs(name.length - q.length) / Math.max(name.length, q.length);
+    score -= lengthRatio * 10;
+
+    // Prefer beers that have a rating over those without
+    if (beer.rating !== null && beer.rating > 0) {
+      score += 5;
+    }
+
+    return { beer, score };
+  });
+
+  // Sort by score descending
+  scored.sort((a, b) => b.score - a.score);
+
+  console.log(
+    `[name-match] Top 3 scores for "${q}": ${scored
+      .slice(0, 3)
+      .map((s) => `"${s.beer.name}" (${s.score.toFixed(1)})`)
+      .join(", ")}`
+  );
+
+  // Return the best match if it has any meaningful score, otherwise first result
+  if (scored[0].score > 0) return scored[0].beer;
   return beers[0];
 }
 
