@@ -4,26 +4,66 @@ import BeerList from "@/components/BeerList";
 import MenuPhotoUpload from "@/components/MenuPhotoUpload";
 import { useBeerSearch } from "@/hooks/useBeerSearch";
 import { useOcr } from "@/hooks/useOcr";
-import { useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 
 type ViewState = "input" | "results";
 
-export default function Home() {
+function HomeContent() {
   const [viewState, setViewState] = useState<ViewState>("input");
+  const searchParams = useSearchParams();
 
   const beerSearch = useBeerSearch();
   const ocr = useOcr();
   const hasStartedLookup = useRef(false);
+  const hasProcessedShare = useRef(false);
 
-  const handlePhotoSelected = (file: File) => {
-    hasStartedLookup.current = false;
-    ocr.processImage(file);
-  };
+  const handlePhotoSelected = useCallback(
+    (file: File) => {
+      hasStartedLookup.current = false;
+      ocr.processImage(file);
+    },
+    [ocr]
+  );
 
-  const handleUrlSubmitted = (url: string) => {
-    hasStartedLookup.current = false;
-    ocr.processUrl(url);
-  };
+  const handleUrlSubmitted = useCallback(
+    (url: string) => {
+      hasStartedLookup.current = false;
+      ocr.processUrl(url);
+    },
+    [ocr]
+  );
+
+  // Handle shared image from Web Share Target (Android)
+  useEffect(() => {
+    const shared = searchParams.get("shared");
+    const token = searchParams.get("token");
+
+    if (shared === "1" && token && !hasProcessedShare.current) {
+      hasProcessedShare.current = true;
+
+      fetch(`/share?token=${token}`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.dataUrl) {
+            return fetch(data.dataUrl);
+          }
+          throw new Error("No image data");
+        })
+        .then((res) => res.blob())
+        .then((blob) => {
+          const file = new File([blob], "shared-menu.jpg", {
+            type: blob.type,
+          });
+          handlePhotoSelected(file);
+        })
+        .catch(() => {
+          // Silently fail — user can still upload manually
+        });
+
+      window.history.replaceState({}, "", "/");
+    }
+  }, [searchParams, handlePhotoSelected]);
 
   // Auto-lookup as soon as beers are extracted
   useEffect(() => {
@@ -45,22 +85,7 @@ export default function Home() {
   };
 
   return (
-    <main className="min-h-screen bg-zinc-950 text-white">
-      {/* Header */}
-      <div className="bg-gradient-to-b from-amber-950/30 to-zinc-950 border-b border-zinc-800/50">
-        <div className="max-w-lg mx-auto px-4 pt-8 pb-6">
-          <div className="text-center">
-            <h1 className="text-3xl font-bold">
-              <span className="text-amber-400">Drink</span>{" "}
-              <span className="text-white">Good Beer</span>
-            </h1>
-            <p className="text-zinc-400 text-sm mt-1 italic">
-              Life is too short
-            </p>
-          </div>
-        </div>
-      </div>
-
+    <>
       {/* Content */}
       <div className="max-w-lg mx-auto px-4 py-6 space-y-4">
         {viewState === "results" && (
@@ -150,6 +175,31 @@ export default function Home() {
           </>
         )}
       </div>
+    </>
+  );
+}
+
+export default function Home() {
+  return (
+    <main className="min-h-screen bg-zinc-950 text-white">
+      {/* Header */}
+      <div className="bg-gradient-to-b from-amber-950/30 to-zinc-950 border-b border-zinc-800/50">
+        <div className="max-w-lg mx-auto px-4 pt-8 pb-6">
+          <div className="text-center">
+            <h1 className="text-3xl font-bold">
+              <span className="text-amber-400">Drink</span>{" "}
+              <span className="text-white">Good Beer</span>
+            </h1>
+            <p className="text-zinc-400 text-sm mt-1 italic">
+              Life is too short
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <Suspense>
+        <HomeContent />
+      </Suspense>
     </main>
   );
 }
