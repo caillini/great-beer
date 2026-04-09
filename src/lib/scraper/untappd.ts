@@ -85,11 +85,16 @@ export async function getVenueBeers(
   }
 }
 
+/**
+ * Search Untappd for a beer.
+ * @param query - search query string
+ * @param preferredBrewery - if set, ONLY return results from this brewery (strict mode)
+ */
 export async function searchBeer(
   query: string,
   preferredBrewery?: string
 ): Promise<Beer | null> {
-  const cacheKey = `beer-search:${query.toLowerCase()}:${(preferredBrewery || "").toLowerCase()}`;
+  const cacheKey = `beer-search-v2:${query.toLowerCase()}:${(preferredBrewery || "").toLowerCase()}`;
   const cached = getCached<Beer | null>(cacheKey);
   if (cached !== null) return cached;
 
@@ -99,7 +104,13 @@ export async function searchBeer(
     );
     const beers = parseBeerSearchResults(html);
 
-    // Find best match, preferring the correct brewery
+    console.log(
+      `[search] Query "${query}" returned ${beers.length} results: ${beers
+        .slice(0, 5)
+        .map((b) => `"${b.name}" by "${b.brewery}"`)
+        .join(", ")}`
+    );
+
     const match = findBestMatch(query, beers, preferredBrewery);
     if (match) {
       setCache(cacheKey, match, 24 * 60 * 60 * 1000); // 24 hours
@@ -112,8 +123,14 @@ export async function searchBeer(
 }
 
 function breweryMatches(resultBrewery: string, targetBrewery: string): boolean {
-  const a = resultBrewery.toLowerCase().replace(/\s*(brewing|brewery|beer|co\.?|company)\s*/gi, "").trim();
-  const b = targetBrewery.toLowerCase().replace(/\s*(brewing|brewery|beer|co\.?|company)\s*/gi, "").trim();
+  const normalize = (s: string) =>
+    s
+      .toLowerCase()
+      .replace(/\b(brewing|brewery|beer|brew|co\.?|company|craft|artisan)\b/gi, "")
+      .replace(/[^a-z0-9]/g, "")
+      .trim();
+  const a = normalize(resultBrewery);
+  const b = normalize(targetBrewery);
   if (!a || !b) return false;
   return a.includes(b) || b.includes(a);
 }
@@ -125,9 +142,7 @@ function findBestMatch(
 ): Beer | null {
   if (beers.length === 0) return null;
 
-  const q = query.toLowerCase().trim();
-
-  // If we have a preferred brewery, first try to find matches from that brewery
+  // If we have a preferred brewery, ONLY return results from that brewery
   if (preferredBrewery) {
     const breweryMatched = beers.filter((b) =>
       breweryMatches(b.brewery, preferredBrewery)
@@ -136,14 +151,17 @@ function findBestMatch(
       console.log(
         `[match] Found ${breweryMatched.length} result(s) matching brewery "${preferredBrewery}"`
       );
-      // Among brewery matches, pick the best name match
-      const best = findBestNameMatch(q, breweryMatched);
-      if (best) return best;
+      return findBestNameMatch(query, breweryMatched);
     }
+    // No results from this brewery — return null, don't return wrong brewery
+    console.log(
+      `[match] No results matching brewery "${preferredBrewery}" — skipping`
+    );
+    return null;
   }
 
-  // Fallback: best name match across all results
-  return findBestNameMatch(q, beers);
+  // No brewery preference — pick best name match from all results
+  return findBestNameMatch(query, beers);
 }
 
 function findBestNameMatch(query: string, beers: Beer[]): Beer | null {
