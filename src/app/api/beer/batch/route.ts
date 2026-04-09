@@ -1,62 +1,85 @@
-import { searchBeer } from "@/lib/scraper/untappd";
+import {
+  searchBeer,
+  searchBrewery,
+  findBeerAtBrewery,
+} from "@/lib/scraper/untappd";
+import type { BreweryInfo } from "@/lib/scraper/parser";
 import type { Beer, BeerSearchResult, MenuBeerEntry } from "@/lib/types";
 import { NextRequest, NextResponse } from "next/server";
 
+// Cache brewery lookups across beers in the same batch request
+const breweryCache = new Map<string, BreweryInfo | null>();
+
+async function getBreweryInfo(
+  breweryName: string
+): Promise<BreweryInfo | null> {
+  const key = breweryName.toLowerCase();
+  if (breweryCache.has(key)) return breweryCache.get(key) || null;
+  const info = await searchBrewery(breweryName);
+  breweryCache.set(key, info);
+  return info;
+}
+
 async function searchWithFallback(entry: MenuBeerEntry): Promise<Beer | null> {
   const { brewery, beerName, style } = entry;
+  const label = `${brewery} / ${beerName} / ${style}`;
 
-  // Phase 1: Strict brewery matching — only accept results from the correct brewery
-  if (brewery && beerName) {
-    // Try: "Headlands Party Wave" with strict brewery match
-    const q1 = `${brewery} ${beerName}`;
-    console.log(`[batch] Try 1 (strict): "${q1}"`);
-    const r1 = await searchBeer(q1, brewery);
-    if (r1) {
-      console.log(`[batch]   → found: "${r1.name}" by "${r1.brewery}" (${r1.rating})`);
-      return r1;
+  // ──────────────────────────────────────────────────────
+  // Strategy 1: Search by BREWERY (producer) on Untappd
+  //   Find the brewery page, load their beer list, match beer
+  // ──────────────────────────────────────────────────────
+  if (brewery) {
+    console.log(`[batch] Strategy 1 — brewery lookup for "${brewery}"`);
+    const breweryInfo = await getBreweryInfo(brewery);
+    if (breweryInfo) {
+      console.log(
+        `[batch]   Found brewery: "${breweryInfo.name}" → ${breweryInfo.beerListUrl}`
+      );
+      const beer = await findBeerAtBrewery(breweryInfo, beerName, style);
+      if (beer) {
+        console.log(
+          `[batch]   → MATCH: "${beer.name}" (${beer.rating}) [via brewery page]`
+        );
+        return beer;
+      }
+      console.log(`[batch]   → beer "${beerName}" not found on brewery page`);
+    } else {
+      console.log(`[batch]   → brewery "${brewery}" not found on Untappd`);
     }
+  }
 
-    // Try: "Headlands Brewing Party Wave" (append "Brewing" to help Untappd)
-    const q2 = `${brewery} Brewing ${beerName}`;
-    console.log(`[batch] Try 2 (strict): "${q2}"`);
-    const r2 = await searchBeer(q2, brewery);
+  // ──────────────────────────────────────────────────────
+  // Strategy 2: Search by beer name + style (type=beer)
+  //   Untappd beer search, no brewery constraint
+  // ──────────────────────────────────────────────────────
+  if (beerName && style) {
+    const q2 = `${beerName} ${style}`;
+    console.log(`[batch] Strategy 2 — beer search: "${q2}"`);
+    const r2 = await searchBeer(q2);
     if (r2) {
-      console.log(`[batch]   → found: "${r2.name}" by "${r2.brewery}" (${r2.rating})`);
+      console.log(
+        `[batch]   → MATCH: "${r2.name}" by "${r2.brewery}" (${r2.rating})`
+      );
       return r2;
     }
-
-    // Try with style added: "Headlands Party Wave Light Lager"
-    if (style) {
-      const q3 = `${brewery} ${beerName} ${style}`;
-      console.log(`[batch] Try 3 (strict): "${q3}"`);
-      const r3 = await searchBeer(q3, brewery);
-      if (r3) {
-        console.log(`[batch]   → found: "${r3.name}" by "${r3.brewery}" (${r3.rating})`);
-        return r3;
-      }
-    }
-
-    // Try just beer name but still require brewery match
-    console.log(`[batch] Try 4 (strict): "${beerName}"`);
-    const r4 = await searchBeer(beerName, brewery);
-    if (r4) {
-      console.log(`[batch]   → found: "${r4.name}" by "${r4.brewery}" (${r4.rating})`);
-      return r4;
-    }
   }
 
-  // Phase 2: No brewery info — search without brewery constraint
+  // ──────────────────────────────────────────────────────
+  // Strategy 3: Search by just beer name (type=beer)
+  //   Last resort fallback
+  // ──────────────────────────────────────────────────────
   if (beerName) {
-    const fallbackQuery = brewery ? `${brewery} ${beerName}` : beerName;
-    console.log(`[batch] Try 5 (no brewery constraint): "${fallbackQuery}"`);
-    const r5 = await searchBeer(fallbackQuery);
-    if (r5) {
-      console.log(`[batch]   → found: "${r5.name}" by "${r5.brewery}" (${r5.rating})`);
-      return r5;
+    console.log(`[batch] Strategy 3 — beer search: "${beerName}"`);
+    const r3 = await searchBeer(beerName);
+    if (r3) {
+      console.log(
+        `[batch]   → MATCH: "${r3.name}" by "${r3.brewery}" (${r3.rating})`
+      );
+      return r3;
     }
   }
 
-  console.log(`[batch]   → NO MATCH for ${brewery} ${beerName} ${style}`);
+  console.log(`[batch]   → NO MATCH for [${label}]`);
   return null;
 }
 

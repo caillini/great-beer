@@ -1,6 +1,9 @@
 import type { Beer, Venue } from "../types";
 import { getCached, setCache } from "./cache";
 import {
+  type BreweryInfo,
+  parseBreweryBeers,
+  parseBrewerySearchResults,
   parseBeerSearchResults,
   parseVenueBeers,
   parseVenueSearchResults,
@@ -83,6 +86,121 @@ export async function getVenueBeers(
     console.error("Venue beers fetch failed:", error);
     return [];
   }
+}
+
+/**
+ * Search Untappd for a brewery by name. Returns brewery info with beer list URL.
+ */
+export async function searchBrewery(
+  breweryName: string
+): Promise<BreweryInfo | null> {
+  const cacheKey = `brewery-search:${breweryName.toLowerCase()}`;
+  const cached = getCached<BreweryInfo | null>(cacheKey);
+  if (cached !== null) return cached;
+
+  try {
+    const html = await fetchPage(
+      `https://untappd.com/search?q=${encodeURIComponent(breweryName)}&type=brewery`
+    );
+    const breweries = parseBrewerySearchResults(html);
+    console.log(
+      `[brewery-search] "${breweryName}" → ${breweries.length} results: ${breweries
+        .slice(0, 3)
+        .map((b) => `"${b.name}" (${b.slug})`)
+        .join(", ")}`
+    );
+
+    if (breweries.length === 0) return null;
+
+    // Find best brewery name match
+    const normalize = (s: string) =>
+      s
+        .toLowerCase()
+        .replace(/\b(brewing|brewery|beer|brew|co\.?|company|craft|artisan)\b/gi, "")
+        .replace(/[^a-z0-9]/g, "")
+        .trim();
+
+    const target = normalize(breweryName);
+    const match =
+      breweries.find((b) => normalize(b.name) === target) ||
+      breweries.find((b) => normalize(b.name).includes(target) || target.includes(normalize(b.name))) ||
+      breweries[0];
+
+    setCache(cacheKey, match, 24 * 60 * 60 * 1000); // 24 hours
+    return match;
+  } catch (error) {
+    console.error(`Brewery search failed for "${breweryName}":`, error);
+    return null;
+  }
+}
+
+/**
+ * Get all beers from a brewery's beer list page and find a specific beer.
+ */
+export async function findBeerAtBrewery(
+  breweryInfo: BreweryInfo,
+  beerName: string,
+  style?: string
+): Promise<Beer | null> {
+  const cacheKey = `brewery-beers:${breweryInfo.id}`;
+  let beers = getCached<Beer[]>(cacheKey);
+
+  if (!beers) {
+    try {
+      const html = await fetchPage(breweryInfo.beerListUrl);
+      beers = parseBreweryBeers(html);
+      console.log(
+        `[brewery-beers] ${breweryInfo.name} has ${beers.length} beers`
+      );
+      setCache(cacheKey, beers, 2 * 60 * 60 * 1000); // 2 hours
+    } catch (error) {
+      console.error(
+        `Failed to fetch brewery beers for ${breweryInfo.name}:`,
+        error
+      );
+      return null;
+    }
+  }
+
+  if (!beers || beers.length === 0) return null;
+
+  const beerLower = beerName.toLowerCase().trim();
+
+  // Exact match on beer name
+  const exact = beers.find((b) => b.name.toLowerCase() === beerLower);
+  if (exact) return exact;
+
+  // Beer name contained in result name or vice versa
+  const partial = beers.find(
+    (b) =>
+      b.name.toLowerCase().includes(beerLower) ||
+      beerLower.includes(b.name.toLowerCase())
+  );
+  if (partial) return partial;
+
+  // Try matching with style context
+  if (style) {
+    const withStyle = `${beerName} ${style}`.toLowerCase();
+    const styleMatch = beers.find(
+      (b) =>
+        b.name.toLowerCase().includes(beerLower) ||
+        withStyle.includes(b.name.toLowerCase())
+    );
+    if (styleMatch) return styleMatch;
+  }
+
+  // Fuzzy: check if significant words overlap
+  const beerWords = beerLower.split(/\s+/).filter((w) => w.length > 2);
+  if (beerWords.length > 0) {
+    const fuzzy = beers.find((b) => {
+      const resultName = b.name.toLowerCase();
+      const matchCount = beerWords.filter((w) => resultName.includes(w)).length;
+      return matchCount >= Math.max(1, beerWords.length * 0.6);
+    });
+    if (fuzzy) return fuzzy;
+  }
+
+  return null;
 }
 
 /**
