@@ -85,8 +85,11 @@ export async function getVenueBeers(
   }
 }
 
-export async function searchBeer(query: string): Promise<Beer | null> {
-  const cacheKey = `beer-search:${query.toLowerCase()}`;
+export async function searchBeer(
+  query: string,
+  preferredBrewery?: string
+): Promise<Beer | null> {
+  const cacheKey = `beer-search:${query.toLowerCase()}:${(preferredBrewery || "").toLowerCase()}`;
   const cached = getCached<Beer | null>(cacheKey);
   if (cached !== null) return cached;
 
@@ -96,8 +99,8 @@ export async function searchBeer(query: string): Promise<Beer | null> {
     );
     const beers = parseBeerSearchResults(html);
 
-    // Find best match
-    const match = findBestMatch(query, beers);
+    // Find best match, preferring the correct brewery
+    const match = findBestMatch(query, beers, preferredBrewery);
     if (match) {
       setCache(cacheKey, match, 24 * 60 * 60 * 1000); // 24 hours
     }
@@ -108,7 +111,42 @@ export async function searchBeer(query: string): Promise<Beer | null> {
   }
 }
 
-function findBestMatch(query: string, beers: Beer[]): Beer | null {
+function breweryMatches(resultBrewery: string, targetBrewery: string): boolean {
+  const a = resultBrewery.toLowerCase().replace(/\s*(brewing|brewery|beer|co\.?|company)\s*/gi, "").trim();
+  const b = targetBrewery.toLowerCase().replace(/\s*(brewing|brewery|beer|co\.?|company)\s*/gi, "").trim();
+  if (!a || !b) return false;
+  return a.includes(b) || b.includes(a);
+}
+
+function findBestMatch(
+  query: string,
+  beers: Beer[],
+  preferredBrewery?: string
+): Beer | null {
+  if (beers.length === 0) return null;
+
+  const q = query.toLowerCase().trim();
+
+  // If we have a preferred brewery, first try to find matches from that brewery
+  if (preferredBrewery) {
+    const breweryMatched = beers.filter((b) =>
+      breweryMatches(b.brewery, preferredBrewery)
+    );
+    if (breweryMatched.length > 0) {
+      console.log(
+        `[match] Found ${breweryMatched.length} result(s) matching brewery "${preferredBrewery}"`
+      );
+      // Among brewery matches, pick the best name match
+      const best = findBestNameMatch(q, breweryMatched);
+      if (best) return best;
+    }
+  }
+
+  // Fallback: best name match across all results
+  return findBestNameMatch(q, beers);
+}
+
+function findBestNameMatch(query: string, beers: Beer[]): Beer | null {
   if (beers.length === 0) return null;
 
   const q = query.toLowerCase().trim();
