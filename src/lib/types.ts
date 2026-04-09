@@ -26,6 +26,12 @@ export interface OcrResult {
   confidence: number;
 }
 
+export interface MenuBeerEntry {
+  brewery: string;
+  beerName: string;
+  style: string;
+}
+
 export interface BeerSearchResult {
   query: string;
   match: Beer | null;

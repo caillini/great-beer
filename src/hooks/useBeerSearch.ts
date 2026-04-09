@@ -1,6 +1,6 @@
 "use client";
 
-import type { Beer, BeerSearchResult } from "@/lib/types";
+import type { Beer, BeerSearchResult, MenuBeerEntry } from "@/lib/types";
 import { useCallback, useState } from "react";
 
 export function useBeerSearch() {
@@ -9,17 +9,17 @@ export function useBeerSearch() {
   const [progress, setProgress] = useState({ done: 0, total: 0 });
   const [error, setError] = useState<string | null>(null);
 
-  const searchBatch = useCallback(async (beerNames: string[]) => {
+  const searchBatch = useCallback(async (entries: MenuBeerEntry[]) => {
     setLoading(true);
     setError(null);
     setBeers([]);
-    setProgress({ done: 0, total: beerNames.length });
+    setProgress({ done: 0, total: entries.length });
 
     try {
       const res = await fetch("/api/beer/batch", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ beerNames }),
+        body: JSON.stringify({ beers: entries }),
       });
 
       if (!res.ok) throw new Error("Batch search failed");
@@ -51,7 +51,7 @@ export function useBeerSearch() {
               );
             }
             doneCount++;
-            setProgress({ done: doneCount, total: beerNames.length });
+            setProgress({ done: doneCount, total: entries.length });
           } catch {
             // skip malformed lines
           }

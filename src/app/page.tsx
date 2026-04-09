@@ -69,14 +69,14 @@ function HomeContent() {
   useEffect(() => {
     if (
       ocr.status === "complete" &&
-      ocr.extractedNames.length > 0 &&
+      ocr.extractedBeers.length > 0 &&
       !hasStartedLookup.current
     ) {
       hasStartedLookup.current = true;
       setViewState("results");
-      beerSearch.searchBatch(ocr.extractedNames);
+      beerSearch.searchBatch(ocr.extractedBeers);
     }
-  }, [ocr.status, ocr.extractedNames, beerSearch]);
+  }, [ocr.status, ocr.extractedBeers, beerSearch]);
 
   const handleBack = () => {
     setViewState("input");
@@ -128,7 +128,7 @@ function HomeContent() {
         )}
 
         {ocr.status === "complete" &&
-          ocr.extractedNames.length === 0 && (
+          ocr.extractedBeers.length === 0 && (
             <div className="text-center py-8 text-zinc-400">
               <p className="text-lg mb-2">No beers detected</p>
               <p className="text-sm">

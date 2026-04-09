@@ -1,20 +1,27 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { NextRequest, NextResponse } from "next/server";
 
-const BEER_EXTRACT_PROMPT = `You are analyzing a photo of a bar or restaurant menu. Extract ONLY the beer names from this image.
+const BEER_EXTRACT_PROMPT = `You are analyzing a photo of a bar or restaurant menu. Extract ONLY the beers from this image.
+
+For each beer, identify three separate pieces of information:
+1. **brewery** — the brewery/producer name (e.g. "Sierra Nevada", "Lagunitas", "Bell's")
+2. **beerName** — the specific beer name WITHOUT the style (e.g. "Pale Ale", "Space Dust", "Two Hearted")
+3. **style** — the beer style/type (e.g. "IPA", "Hazy IPA", "Pilsner", "Stout", "Lager", "Sour", "Porter")
 
 Rules:
-- Return ONLY beer names, one per line
-- Include the brewery name if it appears next to the beer name (e.g. "Sierra Nevada Pale Ale" not just "Pale Ale")
-- REMOVE beer style/type descriptors from the name. Strip out words like: IPA, DIPA, NEIPA, APA, Hazy IPA, West Coast IPA, Double IPA, Triple IPA, Pilsner, Lager, Stout, Porter, Ale, Pale Ale, Amber Ale, Brown Ale, Wheat, Hefeweizen, Saison, Sour, Gose, Kolsch, Blonde, Golden, Red Ale, Scotch Ale, Barleywine, ESB, Bitter, Mild, Cream Ale, Dunkel, Bock, Doppelbock, Marzen, Oktoberfest, Schwarzbier, Witbier, Tripel, Dubbel, Quad, Belgian, Farmhouse, Wild Ale, Berliner Weisse, Fruit Beer, Milkshake, Pastry, Imperial, Session
-  - Example: "Firestone Pivo Pilsner" → "Firestone Pivo"
-  - Example: "Elysian Space Dust IPA" → "Elysian Space Dust"
-  - Example: "Modern Times Hazy IPA" → "Modern Times"
-  - BUT keep style words that are part of the beer's actual proper name (e.g. "Pilsner Urquell" stays as-is, "Lagunitas IPA" stays because the beer IS called "Lagunitas IPA")
-  - Use your judgment: if removing the style word leaves only a brewery name with no distinct beer name, keep the style word
-- Do NOT include: prices, ABV percentages, serving sizes, descriptions, tasting notes, food items, wine, cocktails, spirits, non-alcoholic drinks, section headers, or any other text
-- If you cannot identify any beers, return the single word: NONE
-- Do not add any commentary, numbering, or formatting — just the beer names, one per line`;
+- Return ONLY a JSON array of objects with keys: brewery, beerName, style
+- Separate the brewery from the beer name — do NOT combine them
+- The style should be the beer category/type, NOT part of the beer name
+  - Example: "Elysian Space Dust IPA" → {"brewery": "Elysian", "beerName": "Space Dust", "style": "IPA"}
+  - Example: "Sierra Nevada Pale Ale" → {"brewery": "Sierra Nevada", "beerName": "Pale Ale", "style": "Pale Ale"}
+  - Example: "Firestone Walker Pivo Pils" → {"brewery": "Firestone Walker", "beerName": "Pivo", "style": "Pilsner"}
+  - Example: "Guinness Draught" → {"brewery": "Guinness", "beerName": "Draught", "style": "Stout"}
+  - Example: "Modelo Especial" → {"brewery": "Modelo", "beerName": "Especial", "style": "Lager"}
+- If the brewery name is not visible, use an empty string for brewery
+- If the style is not visible, use your beer knowledge to infer it, or use an empty string
+- Do NOT include: food items, wine, cocktails, spirits, non-alcoholic drinks
+- If you cannot identify any beers, return an empty array: []
+- Return ONLY valid JSON, no commentary or markdown formatting`;
 
 export async function POST(request: NextRequest) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -129,16 +136,36 @@ export async function POST(request: NextRequest) {
     const text =
       response.content[0].type === "text" ? response.content[0].text : "";
 
-    if (text.trim() === "NONE") {
-      return NextResponse.json({ beerNames: [] });
+    // Parse JSON array from response (strip markdown code fences if present)
+    const jsonText = text.replace(/```json?\n?/g, "").replace(/```/g, "").trim();
+
+    try {
+      const beers = JSON.parse(jsonText);
+      if (!Array.isArray(beers)) {
+        return NextResponse.json({ beers: [] });
+      }
+      // Validate and clean entries
+      const cleaned = beers
+        .filter((b: { brewery?: string; beerName?: string }) => b.beerName || b.brewery)
+        .map((b: { brewery?: string; beerName?: string; style?: string }) => ({
+          brewery: (b.brewery || "").trim(),
+          beerName: (b.beerName || "").trim(),
+          style: (b.style || "").trim(),
+        }));
+      return NextResponse.json({ beers: cleaned });
+    } catch {
+      // Fallback: treat as line-separated beer names for backwards compat
+      const beerNames = text
+        .split("\n")
+        .map((line: string) => line.trim())
+        .filter((line: string) => line.length > 0 && line !== "NONE");
+      const beers = beerNames.map((name: string) => ({
+        brewery: "",
+        beerName: name,
+        style: "",
+      }));
+      return NextResponse.json({ beers });
     }
-
-    const beerNames = text
-      .split("\n")
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0);
-
-    return NextResponse.json({ beerNames });
   } catch (error) {
     console.error("Claude vision API error:", error);
     return NextResponse.json(

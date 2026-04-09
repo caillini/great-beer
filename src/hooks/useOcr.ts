@@ -1,5 +1,6 @@
 "use client";
 
+import type { MenuBeerEntry } from "@/lib/types";
 import { useCallback, useState } from "react";
 
 type OcrStatus = "idle" | "processing" | "complete" | "error";
@@ -7,14 +8,31 @@ type OcrStatus = "idle" | "processing" | "complete" | "error";
 export function useOcr() {
   const [status, setStatus] = useState<OcrStatus>("idle");
   const [statusText, setStatusText] = useState("");
-  const [extractedNames, setExtractedNames] = useState<string[]>([]);
+  const [extractedBeers, setExtractedBeers] = useState<MenuBeerEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
+
+  const handleResponse = useCallback(async (res: Response) => {
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || "Failed to analyze menu");
+    }
+
+    const data = await res.json();
+    const beers: MenuBeerEntry[] = data.beers || [];
+    setExtractedBeers(beers);
+    setStatus("complete");
+    setStatusText(
+      beers.length > 0
+        ? `Found ${beers.length} beer${beers.length !== 1 ? "s" : ""}`
+        : "No beers detected. Try a clearer photo."
+    );
+  }, []);
 
   const processImage = useCallback(async (file: File) => {
     setStatus("processing");
     setStatusText("Analyzing menu with AI...");
     setError(null);
-    setExtractedNames([]);
+    setExtractedBeers([]);
 
     try {
       const formData = new FormData();
@@ -25,19 +43,7 @@ export function useOcr() {
         body: formData,
       });
 
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || "Failed to analyze menu");
-      }
-
-      const { beerNames } = await res.json();
-      setExtractedNames(beerNames || []);
-      setStatus("complete");
-      setStatusText(
-        beerNames.length > 0
-          ? `Found ${beerNames.length} beer${beerNames.length !== 1 ? "s" : ""}`
-          : "No beers detected. Try a clearer photo."
-      );
+      await handleResponse(res);
     } catch (err) {
       console.error("Menu analysis failed:", err);
       setStatus("error");
@@ -48,13 +54,13 @@ export function useOcr() {
       );
       setStatusText("");
     }
-  }, []);
+  }, [handleResponse]);
 
   const processUrl = useCallback(async (url: string) => {
     setStatus("processing");
     setStatusText("Fetching menu and analyzing with AI...");
     setError(null);
-    setExtractedNames([]);
+    setExtractedBeers([]);
 
     try {
       const res = await fetch("/api/menu/extract", {
@@ -63,19 +69,7 @@ export function useOcr() {
         body: JSON.stringify({ url }),
       });
 
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || "Failed to analyze menu");
-      }
-
-      const { beerNames } = await res.json();
-      setExtractedNames(beerNames || []);
-      setStatus("complete");
-      setStatusText(
-        beerNames.length > 0
-          ? `Found ${beerNames.length} beer${beerNames.length !== 1 ? "s" : ""}`
-          : "No beers detected. Check the URL and try again."
-      );
+      await handleResponse(res);
     } catch (err) {
       console.error("Menu URL analysis failed:", err);
       setStatus("error");
@@ -86,12 +80,12 @@ export function useOcr() {
       );
       setStatusText("");
     }
-  }, []);
+  }, [handleResponse]);
 
   const reset = useCallback(() => {
     setStatus("idle");
     setStatusText("");
-    setExtractedNames([]);
+    setExtractedBeers([]);
     setError(null);
   }, []);
 
@@ -102,7 +96,7 @@ export function useOcr() {
     status,
     progress: status === "processing" ? 50 : status === "complete" ? 100 : 0,
     statusText,
-    extractedNames,
+    extractedBeers,
     error,
   };
 }
