@@ -348,9 +348,11 @@ function findBestNameMatch(query: string, beers: Beer[]): Beer | null {
       .join(", ")}`
   );
 
-  // Return the best match if it has any meaningful score, otherwise first result
-  if (scored[0].score > 0) return scored[0].beer;
-  return beers[0];
+  // Only return a match if the score is meaningful (at least one word overlap)
+  // Returning random unrelated beers is worse than no result
+  if (scored[0].score >= 15) return scored[0].beer;
+  console.log(`[name-match] Score too low (${scored[0].score.toFixed(1)}) — rejecting match`);
+  return null;
 }
 
 async function enrichBeersWithRatings(beers: Beer[]): Promise<Beer[]> {
