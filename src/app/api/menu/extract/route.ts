@@ -25,11 +25,13 @@ Rules:
 - If the style is not visible, use your beer knowledge to infer it, or use an empty string
 - Do NOT include: food items, wine, cocktails, spirits, ciders, hard seltzers, hard kombucha, CBD drinks, sparkling water, non-alcoholic (NA) beverages, or any non-beer drinks
 - Do NOT include generic/vague entries like "Assorted Styles", "Assorted Flavors", or "Gluten Free Beer" without a specific beer name
+- Do NOT include bottled or canned beers — ONLY include draft/tap beers
 - ONLY include items that are clearly a specific, named BEER (not cider, not seltzer, not NA)
+- ONLY include beers that are explicitly listed on the menu — do NOT infer, guess, or add beers that are not written on the menu
 - If you cannot identify any beers, return an empty array: []
 - Return ONLY valid JSON, no commentary or markdown formatting`;
 
-const BEER_EXTRACT_PROMPT_TEXT = `You are analyzing text from a bar or restaurant menu. Extract ONLY the beers from this text.
+const BEER_EXTRACT_PROMPT_TEXT = `You are analyzing text from a bar or restaurant menu. Extract ONLY the draft/tap beers from this text.
 
 For each beer, identify three separate pieces of information:
 1. **brewery** — the brewery/producer name (e.g. "Sierra Nevada", "Lagunitas", "Bell's")
@@ -44,7 +46,9 @@ Rules:
 - If the style is not visible, use your beer knowledge to infer it, or use an empty string
 - Do NOT include: food items, appetizers, entrees, desserts, sides, wine, cocktails, spirits, ciders, hard seltzers, hard kombucha, CBD drinks, sparkling water, non-alcoholic (NA) beverages, or any non-beer drinks
 - Do NOT include generic/vague entries like "Assorted Styles" or "Ask your server"
+- Do NOT include bottled or canned beers — ONLY include draft/tap beers
 - ONLY include items that are clearly a specific, named BEER
+- ONLY include beers that are explicitly listed in the text — do NOT infer, guess, or add beers not mentioned
 - If you cannot identify any beers, return an empty array: []
 - Return ONLY valid JSON, no commentary or markdown formatting`;
 
@@ -162,15 +166,28 @@ function findPdfLinks(html: string, baseUrl: string): string[] {
       // Resolve relative URLs
       try {
         const fullUrl = new URL(href, baseUrl).toString();
-        // Prioritize menu-related PDFs
+        const combined = (href + " " + text).toLowerCase();
+        // Skip brunch, spirits, happy hour, catering, wine, dessert PDFs
+        const isExcluded =
+          combined.includes("brunch") ||
+          combined.includes("spirit") ||
+          combined.includes("happy hour") ||
+          combined.includes("catering") ||
+          combined.includes("wine list") ||
+          combined.includes("dessert");
+        // Prioritize main menu / beer / drink / tap PDFs
         const isMenu =
-          href.toLowerCase().includes("menu") ||
-          text.includes("menu") ||
-          text.includes("beer") ||
-          text.includes("drink") ||
-          text.includes("tap");
-        if (isMenu) {
-          pdfs.unshift(fullUrl); // Put menu PDFs first
+          combined.includes("menu") ||
+          combined.includes("beer") ||
+          combined.includes("drink") ||
+          combined.includes("tap") ||
+          combined.includes("f&b") ||
+          combined.includes("fb") ||
+          combined.includes("food");
+        if (isExcluded) {
+          pdfs.push(fullUrl); // Low priority
+        } else if (isMenu) {
+          pdfs.unshift(fullUrl); // High priority
         } else {
           pdfs.push(fullUrl);
         }
