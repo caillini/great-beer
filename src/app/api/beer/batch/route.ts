@@ -7,6 +7,9 @@ import type { BreweryInfo } from "@/lib/scraper/parser";
 import type { Beer, BeerSearchResult, MenuBeerEntry } from "@/lib/types";
 import { NextRequest, NextResponse } from "next/server";
 
+// Allow up to 60s on Vercel (default is 10s which is too short for 18+ beers)
+export const maxDuration = 60;
+
 // Cache brewery lookups across beers in the same batch request
 const breweryCache = new Map<string, BreweryInfo | null>();
 

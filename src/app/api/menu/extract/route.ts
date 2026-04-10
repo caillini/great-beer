@@ -1,6 +1,9 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { NextRequest, NextResponse } from "next/server";
 
+// Allow up to 60s for Claude Vision API call
+export const maxDuration = 60;
+
 const BEER_EXTRACT_PROMPT = `You are analyzing a photo of a bar or restaurant menu. Extract ONLY the beers from this image.
 
 For each beer, identify three separate pieces of information:

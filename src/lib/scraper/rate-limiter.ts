@@ -1,5 +1,5 @@
 let lastRequestTime = 0;
-const MIN_INTERVAL_MS = 1500;
+const MIN_INTERVAL_MS = 500; // 500ms between requests (was 1500ms)
 
 export async function throttle(): Promise<void> {
   const now = Date.now();
