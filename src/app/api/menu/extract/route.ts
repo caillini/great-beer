@@ -22,9 +22,9 @@ Rules:
   - Example: "Modelo Especial" → {"brewery": "Modelo", "beerName": "Especial", "style": "Lager"}
 - If the brewery name is not visible, use an empty string for brewery
 - If the style is not visible, use your beer knowledge to infer it, or use an empty string
-- Do NOT include: food items, wine, cocktails, spirits, non-alcoholic drinks, hard kombucha, CBD drinks, sparkling water, seltzers, or non-beer beverages
+- Do NOT include: food items, wine, cocktails, spirits, ciders, hard seltzers, hard kombucha, CBD drinks, sparkling water, non-alcoholic (NA) beverages, or any non-beer drinks
 - Do NOT include generic/vague entries like "Assorted Styles", "Assorted Flavors", or "Gluten Free Beer" without a specific beer name
-- ONLY include items that are clearly a specific, named beer or cider
+- ONLY include items that are clearly a specific, named BEER (not cider, not seltzer, not NA)
 - If you cannot identify any beers, return an empty array: []
 - Return ONLY valid JSON, no commentary or markdown formatting`;
 
