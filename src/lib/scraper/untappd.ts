@@ -348,9 +348,9 @@ function findBestNameMatch(query: string, beers: Beer[]): Beer | null {
       .join(", ")}`
   );
 
-  // Return the best match if it has any meaningful score, otherwise first result
+  // Only return if there's a meaningful match — never return random unrelated beers
   if (scored[0].score > 0) return scored[0].beer;
-  return beers[0];
+  return null;
 }
 
 async function enrichBeersWithRatings(beers: Beer[]): Promise<Beer[]> {
